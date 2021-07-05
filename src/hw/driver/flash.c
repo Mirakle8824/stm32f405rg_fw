@@ -59,10 +59,10 @@ bool flashErase(uint32_t addr, uint32_t length)
     {
       flash_tbl = flash_tbl_bank1;
     }
-    else
-    {
-      flash_tbl = flash_tbl_bank2;
-    }
+//    else
+//    {
+//      flash_tbl = flash_tbl_bank2;
+//    }
 
     for (int i=0; i<FLASH_MAX_SECTOR; i++)
     {
@@ -103,13 +103,115 @@ bool flashErase(uint32_t addr, uint32_t length)
       }
     }
 
+    if (start_sector >= 0)
+    {
+      FLASH_EraseInitTypeDef EraseInit;
+      uint32_t SectorError;
+      HAL_StatusTypeDef status;
+
+
+      EraseInit.Sector       = start_sector;
+      EraseInit.NbSectors    = (end_sector - start_sector) + 1;
+      EraseInit.TypeErase    = FLASH_TYPEERASE_SECTORS;
+      EraseInit.VoltageRange = FLASH_VOLTAGE_RANGE_4;
+      EraseInit.Banks        = flash_tbl[start_sector].bank;
+
+      status = HAL_FLASHEx_Erase(&EraseInit, &SectorError);
+      if (status == HAL_OK)
+      {
+        ret = true;
+      }
+    }
+  }
+
+  HAL_FLASH_Lock();
+
+  return ret;
+
 
 }
 bool flashWrite(uint32_t addr, uint8_t *p_data, uint32_t length)
 {
+  bool ret = true;
+  uint32_t index;
+  uint32_t write_length;
+  uint32_t write_addr;
+  uint8_t buf[32];
+  uint32_t offset;
+  HAL_StatusTypeDef status;
 
+
+  HAL_FLASH_Unlock();
+
+  index = 0;
+  offset = addr%32;
+
+  if (offset != 0 || length < 32)
+  {
+    write_addr = addr - offset;
+    memcpy(&buf[0], (void *)write_addr, 32);
+    memcpy(&buf[offset], &p_data[0], constrain(32-offset, 0, length));
+
+    status = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, write_addr, (uint32_t)buf);
+    if (status != HAL_OK)
+    {
+      return false;
+    }
+
+    if (length < 32)
+    {
+      index += length;
+    }
+    else
+    {
+      index += (32 - offset);
+    }
+  }
+
+
+  while(index < length)
+  {
+    write_length = constrain(length - index, 0, 32);
+
+    status = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, addr + index, (uint32_t)&p_data[index]);
+    if (status != HAL_OK)
+    {
+      ret = false;
+      break;
+    }
+
+    index += write_length;
+
+    if ((length - index) > 0 && (length - index) < 32)
+    {
+      offset = length - index;
+      write_addr = addr + index;
+      memcpy(&buf[0], (void *)write_addr, 32);
+      memcpy(&buf[0], &p_data[index], offset);
+
+      status = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, write_addr, (uint32_t)buf);
+      if (status != HAL_OK)
+      {
+        return false;
+      }
+      break;
+    }
+  }
+
+  HAL_FLASH_Lock();
+
+  return ret;
 }
 bool flahsRead(uint32_t addr, uint8_t *p_data, uint32_t length)
 {
+  bool ret = true;
+  uint8_t *p_byte = (uint8_t *)addr;
 
+
+  for (int i=0; i<length; i++)
+  {
+    p_data[i] = p_byte[i];
+  }
+
+  return ret;
 }
