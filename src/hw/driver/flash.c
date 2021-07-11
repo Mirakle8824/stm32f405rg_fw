@@ -8,201 +8,136 @@
 
 #include "flash.h"
 
-#define FLASH_MAX_SECTOR          12
+#define FLASH_MAX_PAGE_COUNT          12
 
 typedef struct
 {
-  int16_t  index;
-  uint32_t bank;
-  uint32_t addr;
+  uint32_t address;
   uint32_t length;
 } flash_tbl_t;
 
+flash_tbl_t flash_tbl[FLASH_MAX_PAGE_COUNT];
 
-const flash_tbl_t flash_tbl_bank1[FLASH_MAX_SECTOR] =
-    {
-        {0, FLASH_BANK_1, 0x08000000, 16*1024},
-        {1, FLASH_BANK_1, 0x08004000, 16*1024},
-        {2, FLASH_BANK_1, 0x08008000, 16*1024},
-        {3, FLASH_BANK_1, 0x0800c000, 16*1024},
-        {4, FLASH_BANK_1, 0x08010000, 64*1024},
-        {5, FLASH_BANK_1, 0x08020000, 128*1024},
-        {6, FLASH_BANK_1, 0x08040000, 128*1024},
-        {7, FLASH_BANK_1, 0x08060000, 128*1024},
-        {8, FLASH_BANK_1, 0x08080000, 128*1024},
-        {9, FLASH_BANK_1, 0x080a0000, 128*1024},
-        {10, FLASH_BANK_1, 0x080c0000, 128*1024},
-        {11, FLASH_BANK_1, 0x080e0000, 128*1024},
-    };
+static int32_t getPage(uint32_t Address);
 
-bool flashInit(void)
+void flashInit(void)
 {
+  flash_tbl[0].address = 0x08000000;
+  flash_tbl[0].length  = 16*1024;
 
-  return true;
+  flash_tbl[1].address = 0x08004000;
+  flash_tbl[1].length  = 16*1024;
+
+  flash_tbl[2].address = 0x08008000;
+  flash_tbl[2].length  = 16*1024;
+
+  flash_tbl[3].address = 0x0800C000;
+  flash_tbl[3].length  = 16*1024;
+
+  flash_tbl[4].address = 0x08010000;
+  flash_tbl[4].length  = 64*1024;
+
+  flash_tbl[5].address = 0x08020000;
+  flash_tbl[5].length  = 128*1024;
+
+  flash_tbl[6].address = 0x08040000;
+  flash_tbl[6].length  = 128*1024;
+
+  flash_tbl[7].address = 0x08060000;
+  flash_tbl[7].length  = 128*1024;
+
+  flash_tbl[8].address = 0x08080000;
+  flash_tbl[8].length  = 128*1024;
+
+  flash_tbl[9].address = 0x080A0000;
+  flash_tbl[9].length  = 128*1024;
+
+  flash_tbl[10].address = 0x080C0000;
+  flash_tbl[10].length  = 128*1024;
+
+  flash_tbl[11].address = 0x080E0000;
+  flash_tbl[11].length  = 128*1024;
 
 }
+
 bool flashErase(uint32_t addr, uint32_t length)
 {
-  bool ret = false;
+  bool ret = true;
+  int32_t first_page = 0;
+  int32_t num_page = 0;
+  uint32_t SECTORError = 0;
+  FLASH_EraseInitTypeDef EraseInitStruct;
 
-  int32_t start_sector = -1;
-  int32_t end_sector = -1;
-  uint32_t banks;
 
-  const flash_tbl_t *flash_tbl;
 
   HAL_FLASH_Unlock();
 
-  for (banks = 0; banks < 1; banks++)
+
+
+  first_page = getPage(addr);
+  num_page   = getPage(addr + length - 1) - first_page + 1;
+
+
+  if (first_page < 0)
   {
-    if (banks == 0)
-    {
-      flash_tbl = flash_tbl_bank1;
-    }
-//    else
-//    {
-//      flash_tbl = flash_tbl_bank2;
-//    }
-
-    for (int i=0; i<FLASH_MAX_SECTOR; i++)
-    {
-      bool update = false;
-      uint32_t start_addr;
-      uint32_t end_addr;
-
-
-      start_addr = flash_tbl[i].addr;
-      end_addr   = flash_tbl[i].addr + flash_tbl[i].length - 1;
-
-      if (start_addr >= addr && start_addr < (addr+length))
-      {
-        update = true;
-      }
-      if (end_addr >= addr && end_addr < (addr+length))
-      {
-        update = true;
-      }
-
-      if (addr >= start_addr && addr <= end_addr)
-      {
-        update = true;
-      }
-      if ((addr+length-1) >= start_addr && (addr+length-1) <= end_addr)
-      {
-        update = true;
-      }
-
-
-      if (update == true)
-      {
-        if (start_sector < 0)
-        {
-          start_sector = i;
-        }
-        end_sector = i;
-      }
-    }
-
-    if (start_sector >= 0)
-    {
-      FLASH_EraseInitTypeDef EraseInit;
-      uint32_t SectorError;
-      HAL_StatusTypeDef status;
-
-
-      EraseInit.Sector       = start_sector;
-      EraseInit.NbSectors    = (end_sector - start_sector) + 1;
-      EraseInit.TypeErase    = FLASH_TYPEERASE_SECTORS;
-      EraseInit.VoltageRange = FLASH_VOLTAGE_RANGE_4;
-      EraseInit.Banks        = flash_tbl[start_sector].bank;
-
-      status = HAL_FLASHEx_Erase(&EraseInit, &SectorError);
-      if (status == HAL_OK)
-      {
-        ret = true;
-      }
-    }
+    return false;
   }
+
+  EraseInitStruct.TypeErase = FLASH_TYPEERASE_SECTORS;
+  EraseInitStruct.VoltageRange = FLASH_VOLTAGE_RANGE_3;
+  EraseInitStruct.Sector = first_page;
+  EraseInitStruct.NbSectors = num_page;
+
+  if (HAL_FLASHEx_Erase(&EraseInitStruct, &SECTORError) != HAL_OK)
+  {
+    ret = false;
+  }
+
+  /* Note: If an erase operation in Flash memory also concerns data in the data or instruction cache,
+     you have to make sure that these data are rewritten before they are accessed during code
+     execution. If this cannot be done safely, it is recommended to flush the caches by setting the
+     DCRST and ICRST bits in the FLASH_CR register. */
+  __HAL_FLASH_DATA_CACHE_DISABLE();
+  __HAL_FLASH_INSTRUCTION_CACHE_DISABLE();
+
+  __HAL_FLASH_DATA_CACHE_RESET();
+  __HAL_FLASH_INSTRUCTION_CACHE_RESET();
+
+  __HAL_FLASH_INSTRUCTION_CACHE_ENABLE();
+  __HAL_FLASH_DATA_CACHE_ENABLE();
 
   HAL_FLASH_Lock();
 
+
   return ret;
-
-
 }
+
+
+// f405 128bit write
+
 bool flashWrite(uint32_t addr, uint8_t *p_data, uint32_t length)
 {
   bool ret = true;
-  uint32_t index;
-  uint32_t write_length;
-  uint32_t write_addr;
-  uint8_t buf[32];
-  uint32_t offset;
-  HAL_StatusTypeDef status;
-
+  uint64_t data;
 
   HAL_FLASH_Unlock();
 
-  index = 0;
-  offset = addr%32;
-
-  if (offset != 0 || length < 32)
+  for (uint32_t i=0; i<length; i++)
   {
-    write_addr = addr - offset;
-    memcpy(&buf[0], (void *)write_addr, 32);
-    memcpy(&buf[offset], &p_data[0], constrain(32-offset, 0, length));
+    data = p_data[i];
 
-    status = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, write_addr, (uint32_t)buf);
-    if (status != HAL_OK)
-    {
-      return false;
-    }
-
-    if (length < 32)
-    {
-      index += length;
-    }
-    else
-    {
-      index += (32 - offset);
-    }
-  }
-
-
-  while(index < length)
-  {
-    write_length = constrain(length - index, 0, 32);
-
-    status = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, addr + index, (uint32_t)&p_data[index]);
-    if (status != HAL_OK)
+    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_BYTE, addr + i, data) != HAL_OK)
     {
       ret = false;
       break;
     }
-
-    index += write_length;
-
-    if ((length - index) > 0 && (length - index) < 32)
-    {
-      offset = length - index;
-      write_addr = addr + index;
-      memcpy(&buf[0], (void *)write_addr, 32);
-      memcpy(&buf[0], &p_data[index], offset);
-
-      status = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, write_addr, (uint32_t)buf);
-      if (status != HAL_OK)
-      {
-        return false;
-      }
-      break;
-    }
   }
 
   HAL_FLASH_Lock();
 
   return ret;
 }
-bool flahsRead(uint32_t addr, uint8_t *p_data, uint32_t length)
+bool flashRead(uint32_t addr, uint8_t *p_data, uint32_t length)
 {
   bool ret = true;
   uint8_t *p_byte = (uint8_t *)addr;
@@ -214,4 +149,22 @@ bool flahsRead(uint32_t addr, uint8_t *p_data, uint32_t length)
   }
 
   return ret;
+}
+
+static int32_t getPage(uint32_t address)
+{
+  uint32_t i;
+  int32_t page = -1;
+
+
+  for (i=0; i<FLASH_MAX_PAGE_COUNT; i++)
+  {
+    if (address >= flash_tbl[i].address && address < (flash_tbl[i].address + flash_tbl[i].length))
+    {
+      page = i;
+      break;
+    }
+  }
+
+  return page;
 }
